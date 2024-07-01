@@ -1,0 +1,245 @@
+---
+title: "Case Study 1 - Part 1 - Attrition EDA"
+author: "Robert Hines"
+date: "2024-06-30"
+output: word_document
+---
+
+### Youtube Video Link https://www.youtube.com/watch?v=6Pa3KNNiNt4 ###
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Load the data
+attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Unit 8 & 9 Project 1 - MAIN FOLDER/CaseStudy1-data.csv")
+
+```
+
+```{r}
+ggplot(attrition, aes(x = MonthlyIncome, y = JobSatisfaction, color = Attrition)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Monthly Income vs. Job Satisfaction by Attrition", x = "Monthly Income", y = "Job Satisfaction") +
+  facet_wrap(~ Attrition) +
+  theme(legend.position = "none")
+
+
+ggplot(attrition, aes(x = Age, fill = Attrition)) +
+  geom_histogram(binwidth = 1, position = "dodge") +
+  labs(title = "Age and Attrition by Job Role", x = "Age", y = "Count") +
+  facet_wrap(~ JobRole) +
+  theme(legend.position = "none")
+
+
+ggplot(attrition, aes(x = TotalWorkingYears, fill = Attrition)) +
+  geom_histogram(binwidth = 1, position = "dodge") +
+  labs(title = "Total Working Years and Attrition by Job Role", x = "Total Working Years", y = "Count") +
+  facet_wrap(~ JobRole) +
+  theme(legend.position = "none")
+
+
+# Visualize employee turnover by JobRole (assuming there is a Turnover column with 1 for turnover and 0 for retained)
+ggplot(attrition, aes(x = JobRole, fill = factor(Attrition))) +
+  geom_bar(position = "fill") +
+  labs(title = "Employee Turnover by Job Role",
+       x = "Job Role",
+       y = "Proportion",
+       fill = "Turnover") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  scale_fill_manual(values = c("Yes" = "#FFA07A", "No" = "#87CEFA"))  # Custom colors
+```
+
+```{r}
+# Perform Kruskal-Wallis test
+kruskal_test <- kruskal.test(Attrition ~ JobRole, data = attrition)
+kruskal_test
+```
+```{r}
+# Perform Kruskal-Wallis test
+kruskal_test <- kruskal.test(JobRole ~ Attrition, data = attrition)
+kruskal_test
+```
+
+```{r}
+attrition_by_gender_role <- attrition %>%
+  group_by(JobRole, Gender, Attrition) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(attrition, aes(x = WorkLifeBalance, y = JobSatisfaction, fill = Attrition)) +
+  geom_boxplot() +
+  labs(title = "Work-Life Balance vs. Job Satisfaction by Attrition", x = "Work-Life Balance", y = "Job Satisfaction") +
+  facet_wrap(~ Attrition) +
+  theme(legend.position = "none")
+
+ggplot(attrition, aes(x = YearsAtCompany, y = PerformanceRating, color = Attrition)) +
+  geom_jitter(alpha = 0.7) +
+  labs(title = "Years at Company vs. Performance Rating by Attrition", x = "Years at Company", y = "Performance Rating") +
+  facet_wrap(~ Attrition) +
+  theme(legend.position = "none")
+
+attrition_by_department_role <- attrition %>%
+  group_by(Department, JobRole, Attrition) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(attrition_by_department_role, aes(x = Percentage, y = JobRole, fill = Attrition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Attrition by Department and Job Role", x = "Percentage", y = "Job Role") +
+  facet_wrap(~ Department) +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF"))
+
+ggplot(attrition_by_gender_role, aes(x = Percentage, y = JobRole, fill = Attrition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Attrition by Gender and Job Role", x = "Percentage", y = "Job Role") +
+  facet_wrap(~ Gender) +
+  scale_fill_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF"))
+
+gender_by_department_role <- attrition %>%
+  group_by(Department, JobRole, Gender) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(gender_by_department_role, aes(x = Percentage, y = JobRole, fill = Gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Gender by Department and Job Role", x = "Percentage", y = "Job Role") +
+  facet_wrap(~ Department)
+
+```
+
+```{r}
+attrition_by_education <- attrition %>%
+  group_by(EducationField, Attrition) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(attrition_by_education, aes(x = EducationField, y = Percentage, fill = Attrition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Attrition Rates by Education Field", x = "Education Field", y = "Percentage") +
+  scale_fill_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF"))
+```
+```{r}
+# Perform Kruskal-Wallis test
+kruskal_test <- kruskal.test(Attrition ~ EducationField, data = attrition_by_education)
+kruskal_test
+```
+
+
+```{r}
+ggplot(attrition, aes(x = MonthlyIncome, y = EducationField, color = Attrition)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Monthly Income vs. Education Field by Attrition", x = "Monthly Income", y = "Education Field") +
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF"))
+
+ggplot(attrition, aes(x = MonthlyIncome, y = JobRole, color = Attrition)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Monthly Income vs. Job Role by Attrition", x = "Monthly Income", y = "Job Role") +
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF"))
+
+ggplot(attrition, aes(x = MonthlyIncome, y = Department, color = Attrition)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Monthly Income vs. Job Role by Attrition", x = "Monthly Income", y = "Job Role") +
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF"))
+```
+
+
+```{r}
+attrition_by_education_gender <- attrition %>%
+  group_by(EducationField, Gender, Attrition) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(attrition_by_education_gender, aes(x = EducationField, y = Percentage, fill = Attrition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Attrition by Education Field and Gender", x = "Education Field", y = "Percentage") +
+  facet_wrap(~ Gender) +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+attrition_by_role_gender <- attrition %>%
+  group_by(JobRole, Gender, Attrition) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(attrition_by_role_gender, aes(x = JobRole, y = Percentage, fill = Attrition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(title = "Attrition by Job Role and Gender", x = "Job Role", y = "Percentage") +
+  facet_wrap(~ Gender) +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Convert Attrition to a factor
+attrition$Attrition <- as.factor(attrition$Attrition)
+
+# Perform ANOVA
+anova_model <- aov(Percentage ~ JobRole * Gender, data = attrition_by_role_gender)
+summary(anova_model)
+```
+
+JobRole:
+F value: 0.038
+Pr(>F): 1.000
+The extremely high p-value suggests that job role has no statistically significant effect on attrition percentage.
+
+Gender:
+F value: 0.052
+Pr(>F): 0.823
+The high p-value indicates that gender does not have a statistically significant effect on attrition percentage.
+
+JobRole:Gender
+F value: 0.077
+Pr(>F): 1.000
+The very high p-value suggests that the interaction between job role and gender is not statistically significant in affecting attrition percentage.
+
+
+```{r}
+# Perform Kruskal-Wallis test for JobRole
+kruskal_jobrole <- kruskal.test(Percentage ~ JobRole, data = attrition_by_role_gender)
+kruskal_jobrole
+
+# Perform Kruskal-Wallis test for Gender
+kruskal_gender <- kruskal.test(Percentage ~ Gender, data = attrition_by_role_gender)
+kruskal_gender
+```
+
+```{r}
+ggplot(attrition, aes(x = WorkLifeBalance, y = JobSatisfaction, color = Attrition)) +
+  geom_jitter(alpha = 0.7) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Work-Life Balance vs. Job Satisfaction by Job Role", x = "Work-Life Balance", y = "Job Satisfaction") +
+  facet_wrap(~ JobRole) +
+  theme(legend.position = "none")
+```
+
+```{r}
+ggplot(attrition, aes(x = MonthlyIncome, y = OverTime, color = Attrition)) +
+  geom_jitter(width = 0.3, height = 0.3) +
+  theme(axis.text.x = element_text(hjust = 1)) +
+  labs(title = "Attrition Rates based on Monthly Income vs. Overtime by Job Role", x = "Monthly Income", y = "Overtime") +
+  facet_wrap(~ JobRole) +
+  scale_color_manual(values = c("Yes" = "#FFA07A", "No" = "#87aFFF")) +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Fit a linear model
+model <- lm(MonthlyIncome ~ OverTime * JobRole, data = attrition)
+
+# Summary of the model to check significant interactions and main effects
+summary(model)
+
+# Optionally, you can use ANOVA to test the model
+anova(model)
+
+```

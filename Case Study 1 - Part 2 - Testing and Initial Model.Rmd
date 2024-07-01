@@ -1,0 +1,308 @@
+---
+title: "Case Study 1 - Part 2 - Testing and Initial Model"
+author: "Robert Hines"
+date: "2024-06-30"
+output: word_document
+---
+
+### Youtube Video Link https://www.youtube.com/watch?v=6Pa3KNNiNt4 ###
+
+```{r setup, include=FALSE}
+# Load required packages
+library(dplyr)
+library(tidyverse)
+library(caret)
+library(ROSE)
+library(car)
+```
+
+### Load and Explore Data ###
+```{r}
+# Load the dataset
+attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Unit 8 & 9 Project 1 - MAIN FOLDER/CaseStudy1-data.csv")
+```
+
+### Pre-Processing ###
+```{r}
+# Drop irrelevant columns
+attrition <- attrition %>%
+  select(-c(ID, EmployeeCount, EmployeeNumber, Over18, StandardHours))
+
+# Convert categorical variables to factors
+attrition <- attrition %>%
+  mutate(across(where(is.character), as.factor))
+
+attrition$Attrition
+
+# Relevel the Attrition factor variable
+attrition$Attrition <- relevel(attrition$Attrition, ref = "Yes")
+
+# Separate numerical and categorical columns
+numeric_columns <- attrition %>% select(where(is.numeric))
+categorical_columns <- attrition %>% select(where(is.factor))
+```
+
+### Perform Hypothesis Testing with ANOVA ###
+```{r}
+# Perform ANOVA for numerical variables
+anova_results <- list()
+for (var in names(numeric_columns)) {
+  anova_results[[var]] <- aov(reformulate("Attrition", var), data = attrition)
+}
+anova_summaries <- lapply(anova_results, summary)
+
+# Custom function to extract and format ANOVA summary
+extract_anova_summary <- function(anova_summary, variable_name) {
+  df <- anova_summary[[1]]$Df
+  sum_sq <- anova_summary[[1]]$`Sum Sq`
+  mean_sq <- anova_summary[[1]]$`Mean Sq`
+  f_value <- anova_summary[[1]]$`F value`
+  p_value <- anova_summary[[1]]$`Pr(>F)`
+  
+  formatted_summary <- data.frame(
+    Variable = variable_name,
+    Df = df,
+    Sum_Sq = sum_sq,
+    Mean_Sq = mean_sq,
+    F_value = f_value,
+    P_value = p_value
+  )
+  return(formatted_summary)
+}
+
+# Apply the custom function to each ANOVA summary
+formatted_summaries <- do.call(rbind, lapply(names(anova_summaries), function(var) {
+  extract_anova_summary(anova_summaries[[var]], var)
+}))
+
+# Combine all ANOVA summaries into a single data frame
+formatted_summaries <- formatted_summaries[order(formatted_summaries$P_value), ]
+formatted_summaries
+
+# Display the top 5 contributing factors
+top_10_factors <- head(formatted_summaries, 10)
+print(top_10_factors)
+```
+
+```{r}
+# Visualization of the top 5 factors
+ggplot(top_10_factors, aes(x = reorder(Variable, -F_value), y = F_value)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Contributing Factors to Attrition",
+       x = "Factors",
+       y = "ANOVA F-value") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(top_10_factors, aes(x = reorder(Variable, -F_value), y = F_value, size = F_value)) +
+  geom_point(alpha = 1, color = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Contributing Factors to Attrition",
+       x = "Factors",
+       y = "Importance (Relative Influence)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+# Rename columns
+formatted_summaries <- formatted_summaries %>%
+  rename(
+    `DF` = `Df`,
+    `Sum of Squares` = `Sum_Sq`,
+    `Mean Square` = `Mean_Sq`,
+    `F-Value` = `F_value`,
+    `P-Value` = `P_value`
+  )
+
+# Print formatted summaries with styled table
+formatted_summaries %>%
+  kable(caption = "ANOVA Summaries for Numerical Variables") %>%
+  kable_styling(full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "black") %>% # Header style
+  row_spec(1:nrow(formatted_summaries), color = "blue") # Font color for rows
+```
+
+### Perform Logistic Regression for Categorical Variables ###
+```{r}
+# Perform logistic regression for categorical variables
+logistic_model <- glm(Attrition ~ ., data = attrition, family = binomial)
+logistic_summary <- summary(logistic_model)
+
+# Print logistic regression results
+logistic_results_df <- as.data.frame(logistic_summary$coefficients)
+logistic_results_df <- logistic_results_df %>%
+  rownames_to_column("Variable") %>%
+  select(Variable, Estimate, `Std. Error`, `z value`, `Pr(>|z|)`)
+```
+
+```{r}
+# Rename columns
+logistic_results_df <- logistic_results_df %>%
+  rename(
+    `Standard Error` = `Std. Error`,
+    `Z-Value` = `z value`,
+    `P-Value` = `Pr(>|z|)`
+  )
+
+# Print formatted summaries with styled table
+logistic_results_df %>%
+  kable(caption = "Logististic Regression Summaries for Categorical Variables") %>%
+  kable_styling(full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "black") %>% # Header style
+  row_spec(1:nrow(logistic_results_df), color = "blue") # Font color for rows
+
+```
+
+### Assess Derived Features Relevance with Regards to Attrition ###
+```{r}
+# Convert Attrition to numeric (1 for Yes, 0 for No)
+attrition$Attrition <- ifelse(attrition$Attrition == "Yes", 1, 0)
+
+# Calculate the correlation between each numeric column and the Attrition column
+correlation_with_attrition <- sapply(numeric_columns, function(x) cor(x, attrition$Attrition))
+
+# Convert to data frame for better readability
+correlation_df <- data.frame(
+  Variable = names(correlation_with_attrition),
+  Correlation = correlation_with_attrition
+)
+```
+
+```{r}
+# Print the formatted correlation data frame
+correlation_df %>%
+  kable(caption = "Correlation with Attrition for Numeric Variables") %>%
+  kable_styling(full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "black") %>%
+  row_spec(1:nrow(correlation_df), color = "blue")
+```
+
+### Split the data into training and testing sets ###
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(attrition$Attrition, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+attritionTrain <- attrition[trainIndex,]
+attritionTest <- attrition[-trainIndex,]
+```
+
+```{r}
+# Train the Naive Bayes model
+nbFit <- naiveBayes(Attrition ~ ., data = attritionTrain)
+
+# Predict on the test set
+nbPred <- predict(nbFit, attritionTest)
+
+nbPred <- factor(nbPred, levels = c(0, 1))
+attritionTest$Attrition <- factor(attritionTest$Attrition, levels = c(0, 1))
+
+# Evaluate the model
+confusionMatrix(nbPred, attritionTest$Attrition)
+```
+
+```{r}
+# One-hot encode categorical variables
+dummies <- dummyVars(Attrition ~ ., data = attrition, fullRank = TRUE)
+attrition_encoded <- predict(dummies, newdata = attrition) %>%
+  as.data.frame()
+
+# Add the target variable back to the encoded data
+attrition_encoded$Attrition <- attrition$Attrition
+```
+
+```{r}
+# Split the data into training and testing sets
+set.seed(123)
+trainIndex <- createDataPartition(attrition_encoded$Attrition, p = .7, list = FALSE)
+attritionTrain <- attrition_encoded[trainIndex, ]
+attritionTest <- attrition_encoded[-trainIndex, ]
+
+# Separate features and target variable
+trainX <- attritionTrain %>% select(-Attrition)
+trainY <- attritionTrain$Attrition
+testX <- attritionTest %>% select(-Attrition)
+testY <- attritionTest$Attrition
+```
+
+```{r}
+# Standardize numeric features
+preProcValues <- preProcess(trainX, method = c("center", "scale"))
+trainX_scaled <- predict(preProcValues, trainX)
+testX_scaled <- predict(preProcValues, testX)
+```
+
+```{r}
+# Train Naive Bayes model
+nb_model <- naiveBayes(trainX_scaled, trainY)
+nb_probs <- predict(nb_model, testX_scaled, type = "raw")[,2]
+
+# Adjust the decision threshold for Naive Bayes
+threshold_nb <- 0.3 # Adjust this value as needed
+nb_pred <- ifelse(nb_probs >= threshold_nb, 1, 0)
+```
+
+```{r}
+# Train k-NN model
+knn_pred_train <- knn(train = trainX_scaled, test = trainX_scaled, cl = trainY, k = 11)
+knn_pred_test <- knn(train = trainX_scaled, test = testX_scaled, cl = trainY, k = 11)
+```
+
+```{r}
+# Ensure the predictions and true labels are factors with the same levels
+nb_pred <- factor(nb_pred, levels = c(0, 1))
+knn_pred_train <- factor(knn_pred_train, levels = c(0, 1))
+knn_pred_test <- factor(knn_pred_test, levels = c(0, 1))
+testY <- factor(testY, levels = c(0, 1))
+```
+
+```{r}
+confusionMatrix(nb_pred, testY)
+```
+
+```{r}
+confusionMatrix(knn_pred_test, testY)
+```
+
+```{r}
+# Initial screening with Naive Bayes
+final_pred_bvk <- nb_pred  # Start with Naive Bayes predictions
+
+# Apply k-NN only to instances where Naive Bayes predicts positive
+knn_applied_indices <- which(nb_pred != 1 & knn_pred_test == 1)
+knn_pred_refined <- knn_pred_test[knn_applied_indices]
+
+# Replace Naive Bayes positive predictions with refined k-NN predictions
+final_pred_bvk[knn_applied_indices] <- knn_pred_refined
+final_pred_bvk <- factor(final_pred_bvk, levels = c(0, 1))
+
+# Evaluate the combined model
+conf_matrix_combined <- confusionMatrix(final_pred_bvk, testY)
+print(conf_matrix_combined)
+```
+
+```{r}
+# Initial screening with k-NN
+final_pred_kvb <- knn_pred_test  # Start with k-NN predictions
+
+# Apply Naive Bayes to overwrite k-NN's responses where Naive Bayes predicts 0 and k-NN did not
+nb_applied_indices <- which(nb_pred == 0 & knn_pred_test != 0)
+nb_pred_refined <- nb_pred[nb_applied_indices]
+
+# Replace k-NN positive predictions with refined Naive Bayes predictions
+final_pred_kvb[nb_applied_indices] <- nb_pred_refined
+final_pred_kvb <- factor(final_pred_kvb, levels = c(0, 1))
+
+# Evaluate the combined model
+conf_matrix_combined <- confusionMatrix(final_pred_kvb, testY)
+print(conf_matrix_combined)
+```

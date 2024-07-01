@@ -1,0 +1,418 @@
+---
+title: "Case Study 1 - Part 3 - Derived Attributes and Final Model"
+author: "Robert Hines"
+date: "2024-06-30"
+output: word_document
+---
+
+### Youtube Video Link https://www.youtube.com/watch?v=6Pa3KNNiNt4 ###
+
+```{r setup, include=FALSE}
+# Load required packages
+library(tidyverse)
+library(caret)
+library(naivebayes)
+library(ROSE)
+library(car)
+```
+
+### Load and Explore Data ###
+```{r}
+# Load the dataset
+attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Unit 8 & 9 Project 1 - MAIN FOLDER/CaseStudy1-data.csv")
+```
+
+### Derive New Features ###
+```{r}
+# Create derived features
+attrition <- attrition %>%
+  mutate(
+    IncomeJobLevelRatio = MonthlyIncome / JobLevel,
+    YearsInRoleToTotalYearsRatio = YearsInCurrentRole / TotalWorkingYears,
+    DistanceWorkLifeBalanceRatio = DistanceFromHome / WorkLifeBalance,
+    AverageSatisfaction = rowMeans(select(., JobSatisfaction, EnvironmentSatisfaction, RelationshipSatisfaction), na.rm = TRUE),
+    HighIncomeFlag = ifelse(MonthlyIncome > quantile(MonthlyIncome, 0.75), 1, 0),
+    LongTenureFlag = ifelse(YearsAtCompany > 5, 1, 0),
+    JobRoleDepartment = interaction(JobRole, Department, drop = TRUE)
+  )
+```
+
+### Data Preprocessing ###
+```{r}
+# Drop irrelevant columns
+attrition <- attrition %>%
+  select(-c(ID, EmployeeCount, EmployeeNumber, Over18, StandardHours))
+```
+
+```{r}
+# Convert categorical variables to factors
+attrition <- attrition %>%
+  mutate(across(where(is.character), as.factor))
+
+attrition$HighIncomeFlag <- as.factor(attrition$HighIncomeFlag)
+attrition$LongTenureFlag <- as.factor(attrition$LongTenureFlag)
+
+# Separate numerical and categorical columns
+numeric_columns <- attrition %>% select(where(is.numeric))
+categorical_columns <- attrition %>% select(where(is.factor))
+
+# Normalize numerical variables
+preProc <- preProcess(numeric_columns, method = c("center", "scale"))
+numeric_columns_norm <- predict(preProc, numeric_columns)
+
+# Combine the normalized numerical and categorical variables
+attrition_preprocessed <- bind_cols(numeric_columns_norm, categorical_columns)
+
+# Impute missing values using median
+preProc <- preProcess(attrition_preprocessed, method = "medianImpute")
+attrition_preprocessed <- predict(preProc, attrition_preprocessed)
+```
+
+### Perform Hypothesis Testing with ANOVA ###
+```{r}
+# Perform ANOVA for numerical variables
+anova_results <- list()
+for (var in names(numeric_columns)) {
+  anova_results[[var]] <- aov(reformulate("Attrition", var), data = attrition_preprocessed)
+}
+anova_summaries <- lapply(anova_results, summary)
+
+# Custom function to extract and format ANOVA summary
+extract_anova_summary <- function(anova_summary, variable_name) {
+  df <- anova_summary[[1]]$Df
+  sum_sq <- anova_summary[[1]]$`Sum Sq`
+  mean_sq <- anova_summary[[1]]$`Mean Sq`
+  f_value <- anova_summary[[1]]$`F value`
+  p_value <- anova_summary[[1]]$`Pr(>F)`
+  
+  formatted_summary <- data.frame(
+    Variable = variable_name,
+    Df = df,
+    Sum_Sq = sum_sq,
+    Mean_Sq = mean_sq,
+    Statistic = f_value,
+    P_Value = p_value,
+    Source = "ANOVA"
+  )
+  return(formatted_summary)
+}
+
+# Apply the custom function to each ANOVA summary
+formatted_summaries <- do.call(rbind, lapply(names(anova_summaries), function(var) {
+  extract_anova_summary(anova_summaries[[var]], var)
+}))
+
+# Rank ANOVA results by P-Value
+formatted_summaries <- formatted_summaries %>%
+  mutate(Rank = rank(P_Value, ties.method = "first"))
+
+# Filter top 10 significant factors based on ranks
+top_10_anova <- formatted_summaries %>%
+  arrange(Rank) %>%
+  head(10)
+```
+
+```{r}
+ggplot(top_10_anova, aes(x = reorder(Variable, -Statistic), y = Statistic, size = Statistic)) +
+  geom_point(alpha = 1, color = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Contributing Factors to Attrition",
+       x = "Factors",
+       y = "Importance (Relative Influence)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+# Print formatted summaries with styled table
+top_10_anova %>%
+  kable(caption = "ANOVA Summaries for Numerical Variables") %>%
+  kable_styling(full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "black") %>% # Header style
+  row_spec(1:nrow(top_10_anova), color = "blue") # Font color for rows
+```
+
+Perform Logistic Regression for Categorical Variables
+```{r}
+# Perform logistic regression for categorical variables
+logistic_model <- glm(Attrition ~ ., data = categorical_columns, family = binomial)
+logistic_summary <- summary(logistic_model)
+
+# Print logistic regression results
+logistic_results_df <- as.data.frame(logistic_summary$coefficients)
+logistic_results_df <- logistic_results_df %>%
+  rownames_to_column("Variable") %>%
+  select(Variable, Estimate, `Std. Error`, `z value`, `Pr(>|z|)`)
+```
+
+```{r}
+# Rename columns
+logistic_results_df <- logistic_results_df %>%
+  rename(
+    `Standard Error` = `Std. Error`,
+    `Statistic` = `z value`,
+    `P_Value` = `Pr(>|z|)`
+  ) %>%
+  mutate(Source = "Logistic Regression")
+
+# Rank logistic regression results by P-Value
+logistic_results_df <- logistic_results_df %>%
+  mutate(Rank = rank(P_Value, ties.method = "first"))
+
+top_10_logistic <- logistic_results_df %>%
+  arrange(Rank) %>%
+  head(10)
+```
+
+```{r}
+# Print formatted summaries with styled table
+top_10_logistic %>%
+  kable(caption = "Top 10 Significant Factors in Logistic Regression") %>%
+  kable_styling(full_width = FALSE) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "black") %>% # Header style
+  row_spec(1:nrow(top_10_logistic), color = "blue") # Font color for rows
+```
+
+```{r}
+# Combine top 10 lists from ANOVA and logistic regression
+combined_top_20 <- bind_rows(top_10_anova, top_10_logistic) %>%
+  mutate(Rank = rank(P_Value, ties.method = "first")) %>%
+  head(20)
+
+# Ensure Variables are correctly ordered by Statistic
+combined_top_20$Variable <- factor(combined_top_20$Variable, levels = combined_top_20$Variable[order(-combined_top_20$P_Value)])
+```
+
+```{r}
+# Visualization of the combined top 20 factors
+ggplot(combined_top_20, aes(x = Variable, y = Rank, size = Statistic, color = Source)) +
+  geom_point(alpha = 0.7) +
+  coord_flip() +
+  labs(title = "Top 20 Contributing Factors to Attrition",
+       x = "Factors",
+       y = "Rank",
+       size = "Statistic Value",
+       color = "Analysis Source") +
+  theme_minimal() +
+  theme(legend.position = "right")
+```
+
+```{r}
+# Combine top 10 lists from ANOVA and logistic regression
+combined_top_5 <- combined_top_20 %>%
+  head(5)
+```
+
+```{r}
+# Visualization of the combined top 20 factors
+ggplot(combined_top_5, aes(x = Variable, y = Rank, size = 40, color = Source)) +
+  geom_point(alpha = 0.7) +
+  coord_flip() +
+  labs(title = "Top 20 Contributing Factors to Attrition",
+       x = "Factors",
+       y = "Rank (Lower is Better)",
+       color = "Analysis Source") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+Split the Data
+```{r}
+# Split the data into training and test sets
+set.seed(123)
+trainIndex <- createDataPartition(attrition_preprocessed$Attrition, p = 0.7, list = FALSE)
+trainData <- attrition_preprocessed[trainIndex,]
+testData <- attrition_preprocessed[-trainIndex,]
+```
+
+Balance the Dataset Using ROSE
+
+Oversampling the Minority Class
+```{r}
+# Apply ROSE to oversample the minority class using
+trainData_rose_oversample <- ovun.sample(Attrition ~ ., data = trainData, method = "over", N = 2*nrow(trainData))$data
+
+# Check class distribution
+table(trainData_rose_oversample$Attrition)
+
+```
+
+Undersampling the Majority Class
+```{r}
+# Apply ROSE to undersample the majority class
+trainData_rose_undersample <- ovun.sample(Attrition ~ ., data = trainData, method = "under", N = 2*sum(trainData$Attrition == "Yes"))$data
+
+# Check class distribution
+table(trainData_rose_undersample$Attrition)
+```
+
+Combining Oversampling and Undersampling
+```{r}
+# Apply ROSE to both oversample and undersample
+trainData_rose_both <- ovun.sample(Attrition ~ ., data = trainData, method = "both", p = 0.5, N = nrow(trainData))$data
+
+# Check class distribution
+table(trainData_rose_both$Attrition)
+```
+
+Evaluate Model Performance
+```{r}
+evaluate_model <- function(data, model_type = "knn", k = 10) {
+  # Split the data into training and test sets
+  set.seed(123)
+  trainIndex <- createDataPartition(data$Attrition, p = 0.7, list = FALSE)
+  trainData <- data[trainIndex,]
+  testData <- data[-trainIndex,]
+  
+  if (model_type == "knn") {
+    # Train k-NN model
+    set.seed(123)
+    model <- train(Attrition ~ ., data = trainData, method = "knn", trControl = trainControl(method = "cv", number = 10), tuneGrid = expand.grid(k = k))
+  } else if (model_type == "nb") {
+    # Train Naive Bayes model
+    model <- naiveBayes(Attrition ~ ., data = trainData, laplace = 1)
+  }
+  
+  # Predict on test data
+  predictions <- predict(model, newdata = testData)
+  
+  # Evaluate the model
+  conf_matrix <- confusionMatrix(predictions, testData$Attrition)
+  sensitivity <- conf_matrix$byClass['Sensitivity']
+  specificity <- conf_matrix$byClass['Specificity']
+  
+  return(list(model = model, sensitivity = sensitivity, specificity = specificity, conf_matrix = conf_matrix))
+}
+```
+
+
+# Evaluate on original data
+```{r}
+original_results_knn <- evaluate_model(trainData, model_type = "knn")
+original_results_nb <- evaluate_model(trainData, model_type = "nb")
+```
+
+# Evaluate on ROSE oversampled data
+
+```{r}
+rose_oversample_results_knn <- evaluate_model(trainData_rose_oversample, model_type = "knn")
+rose_oversample_results_nb <- evaluate_model(trainData_rose_oversample, model_type = "nb")
+```
+
+# Evaluate on ROSE undersampled data
+
+```{r}
+rose_undersample_results_knn <- evaluate_model(trainData_rose_undersample, model_type = "knn")
+rose_undersample_results_nb <- evaluate_model(trainData_rose_undersample, model_type = "nb")
+```
+
+# Evaluate on ROSE combined data
+```{r}
+rose_both_results_knn <- evaluate_model(trainData_rose_both, model_type = "knn")
+rose_both_results_nb <- evaluate_model(trainData_rose_both, model_type = "nb")
+```
+
+# Print results
+```{r}
+# Print results
+list(
+  original_knn = original_results_knn,
+  rose_oversample_knn = rose_oversample_results_knn,
+  rose_undersample_knn = rose_undersample_results_knn,
+  rose_both_knn = rose_both_results_knn
+)
+```
+
+```{r}
+# Print results
+list(
+  original_nb = original_results_nb,
+  rose_oversample_nb = rose_oversample_results_nb,
+  rose_undersample_nb = rose_undersample_results_nb,
+  rose_both_nb = rose_both_results_nb
+)
+```
+
+```{r}
+case_study_no_attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Project 1/CaseStudy2CompSet No Attrition.csv")
+```
+
+
+### Derive New Features ###
+```{r}
+# Create derived features
+case_study_no_attrition <- case_study_no_attrition %>%
+  mutate(
+    IncomeJobLevelRatio = MonthlyIncome / JobLevel,
+    YearsInRoleToTotalYearsRatio = YearsInCurrentRole / TotalWorkingYears,
+    DistanceWorkLifeBalanceRatio = DistanceFromHome / WorkLifeBalance,
+    AverageSatisfaction = rowMeans(select(., JobSatisfaction, EnvironmentSatisfaction, RelationshipSatisfaction), na.rm = TRUE),
+    HighIncomeFlag = ifelse(MonthlyIncome > quantile(MonthlyIncome, 0.75), 1, 0),
+    LongTenureFlag = ifelse(YearsAtCompany > 5, 1, 0),
+    JobRoleDepartment = interaction(JobRole, Department, drop = TRUE)
+  )
+```
+
+### Data Preprocessing ###
+```{r}
+# Drop irrelevant columns
+case_study_no_attrition <- case_study_no_attrition %>%
+  select(-c(EmployeeCount, EmployeeNumber, Over18, StandardHours))
+```
+
+```{r}
+# Convert categorical variables to factors
+case_study_no_attrition <- case_study_no_attrition %>%
+  mutate(across(where(is.character), as.factor))
+
+case_study_no_attrition$HighIncomeFlag <- as.factor(case_study_no_attrition$HighIncomeFlag)
+case_study_no_attrition$LongTenureFlag <- as.factor(case_study_no_attrition$LongTenureFlag)
+
+# Separate numerical and categorical columns
+numeric_columns <- case_study_no_attrition %>% select(where(is.numeric))
+categorical_columns <- case_study_no_attrition %>% select(where(is.factor))
+
+# Normalize numerical variables
+preProc <- preProcess(numeric_columns, method = c("center", "scale"))
+numeric_columns_norm <- predict(preProc, numeric_columns)
+
+# Combine the normalized numerical and categorical variables
+case_study_preprocessed <- bind_cols(numeric_columns_norm, categorical_columns)
+
+# Impute missing values using median
+preProc <- preProcess(case_study_preprocessed, method = "medianImpute")
+case_study_preprocessed <- predict(preProc, case_study_preprocessed)
+```
+
+```{r}
+trained_model <- rose_undersample_results_nb$model
+```
+
+```{r}
+case_study_predictions <- predict(trained_model, case_study_preprocessed)
+```
+
+```{r}
+# Display the new dataset with predictions
+print(case_study_predictions)
+```
+
+```{r}
+case_study_preprocessed$Attrition <- case_study_predictions
+case_study_preprocessed <- case_study_preprocessed %>%
+  select(c(ID, Attrition))
+case_study_preprocessed$ID <- case_study_no_attrition$ID
+```
+
+
+
+```{r}
+write.csv(case_study_preprocessed, "path_to_save/case_study_preprocessed.csv", row.names = TRUE)
+```
+
