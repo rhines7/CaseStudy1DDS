@@ -13,7 +13,7 @@ library(ggplot2)
 library(dplyr)
 
 # Load the data
-attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Unit 8 & 9 Project 1 - MAIN FOLDER/CaseStudy1-data.csv")
+attrition <- read.csv("PATH/CaseStudy1-data.csv")
 
 ```
 
