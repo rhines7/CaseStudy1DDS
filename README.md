@@ -7,6 +7,7 @@ This is Case Study 1 for DS-6306 from the MSDS program at SMU.
 ### 1. Usage
 This Project is broken into three R-Markdown Files.
 Each file is entirely independent of the others, if you are trying to run them in sequence, then be sure to clear the workspace before moving from one file to the next.
+You will need to update the Path variables to point to the csv files included in this repo.
 
 Part 1 - Attrition EDA: This file is a series of graphs and brief analytic tests to visualize and assess variable relationships with one another.
 
