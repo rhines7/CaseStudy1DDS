@@ -19,7 +19,7 @@ library(car)
 ### Load and Explore Data ###
 ```{r}
 # Load the dataset
-attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Unit 8 & 9 Project 1 - MAIN FOLDER/CaseStudy1-data.csv")
+attrition <- read.csv("PATH/CaseStudy1-data.csv")
 ```
 
 ### Derive New Features ###
@@ -340,7 +340,7 @@ list(
 ```
 
 ```{r}
-case_study_no_attrition <- read.csv("C:/Users/rhine/Desktop/SMU MSDS/DS 6306 - Doing Data Science/Project 1/CaseStudy2CompSet No Attrition.csv")
+case_study_no_attrition <- read.csv("PATH/CaseStudy1CompSet No Attrition.csv")
 ```
 
 
@@ -413,6 +413,6 @@ case_study_preprocessed$ID <- case_study_no_attrition$ID
 
 
 ```{r}
-write.csv(case_study_preprocessed, "path_to_save/case_study_preprocessed.csv", row.names = TRUE)
+write.csv(case_study_preprocessed, "PATH/case_study_preprocessed.csv", row.names = TRUE)
 ```
 
